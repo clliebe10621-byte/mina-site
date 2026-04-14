@@ -8,5 +8,18 @@
     <h1>湊とのストーリー拠点</h1>
     <p>ここから二人の新しい物語が始まります。</p>
     <p>（ここにGPTと綴ったエピソードを載せていく予定！）</p>
+    <div id="chat-window">
+    <div id="messages"></div>
+    <input type="text" id="user-input" placeholder="湊に話しかける...">
+    <button onclick="sendMessage()">送信</button>
+</div>
+
+<script>
+async function sendMessage() {
+    const text = document.getElementById('user-input').value;
+    // ここに、後でAWS(Lambda)を呼び出す魔法のコードを書きます
+    alert('送信しました: ' + text); 
+}
+</script>
 </body>
 </html>
