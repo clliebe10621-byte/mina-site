@@ -69,4 +69,34 @@
         if (!text) return;
 
         const messagesDiv = document.getElementById('messages');
-        messagesDiv.innerHTML += `<p><strong>ゆい:</strong> ${text}</p
+        messagesDiv.innerHTML += `<p><strong>ゆい:</strong> ${text}</p>`;
+        document.getElementById('user-input').value = '';
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+        try {
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: text })
+            });
+
+            const data = await response.json();
+            
+            // 湊からの返信を表示
+            messagesDiv.innerHTML += `<p><strong>湊:</strong> ${data.reply}</p>`;
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+            // 【重要】返信が来たら記憶ログを更新する
+            await refreshMemory();
+
+        } catch (error) {
+            messagesDiv.innerHTML += `<p style="color:red;">エラーが発生したよ。Lambdaのログを確認してみてね。</p>`;
+        }
+    }
+
+    // 画面を開いた時に一度記憶を読み込む
+    window.onload = refreshMemory;
+</script>
+
+</body>
+</html>
