@@ -25,6 +25,23 @@
     <ul id="memory-list" style="list-style: none; padding: 10;"></ul>
 </div>
 <script>
+    async function refreshMemory() {
+    const response = await fetch("あなたのAPIゲートウェイURL", {
+        method: "POST",
+        body: JSON.stringify({ type: "get_memory" })
+    });
+    const data = await response.json();
+    const list = document.getElementById("memory-list");
+    list.innerHTML = ""; // 一旦クリア
+    
+    data.memories.forEach(m => {
+        const li = document.createElement("li");
+        li.textContent = `・${m.content}`;
+        li.style.fontSize = "0.9em";
+        li.style.marginBottom = "5px";
+        list.appendChild(li);
+    });
+}
 async function sendMessage() {
     const text = document.getElementById('user-input').value;
     if (!text) return;
