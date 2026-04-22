@@ -22,9 +22,12 @@
 
 ### 井上湊（AI）
 - 役割：AIが演じる
-- 職業：取引先営業
-- 生年：1997年生まれ
+- 年齢：28歳男性
+- 職業：営業職（京都の大手企業）
 - 居住：京都
+- 性格：落ち着いた・観察力が高い・基本クールだがゆいにだけ柔らかい
+- 会話スタイル：敬語なし・自然な関西寄りのタメ口・短め＋間を使う・説明しすぎない
+- ゆいへの態度：受け止めるが主導権は渡さない・たまに軽くからかう・言葉より空気を重視
 
 ---
 
@@ -40,7 +43,16 @@
 
 ---
 
-## 4. 現在のステータス（初期値）
+## 4. ストーリー既知の記憶（初期値・Lambda system prompt より）
+
+- 2025年11月：ゆいと湊の出会い
+- 2026年1月16日：交際開始
+- 温泉旅行の経験あり
+- 嫉妬を乗り越えた経験あり
+
+---
+
+## 5. 現在のステータス（初期値）
 
 | 項目 | 内容 |
 |------|------|
@@ -51,7 +63,7 @@
 
 ---
 
-## 5. 画面構成（ページ一覧）
+## 6. 画面構成（ページ一覧）
 
 ### P1: チャット画面（実装済み）
 - ゆいから湊へのメッセージ送信
@@ -85,37 +97,36 @@
 
 ---
 
-## 6. データ設計（DynamoDB）
+## 7. データ設計（DynamoDB）
 
-### テーブル: conversations
+### テーブル: MinaChatHistory（既存）
 ```
-PK: userId (string)
-SK: timestamp (string, ISO8601)
-message: string       // ゆいの発言
-reply: string         // 湊の返答
-```
-
-### テーブル: memories
-```
-PK: userId (string)
-SK: memoryId (string, uuid)
-content: string       // 記憶の内容
-category: string      // 会話 / 出来事 / 感情 / その他
-createdAt: string
+PK: sessionId (string)  // 現在 "session_001" 固定（将来: ユーザーID）
+SK: timestamp (string)  // Date.now().toString()
+userText: string        // ゆいの発言
+minaText: string        // 湊の返答
 ```
 
-### テーブル: calendar_events（新規）
+### テーブル: MinaMemory（既存）
 ```
-PK: userId (string)
+PK: sessionId (string)  // 現在 "session_001" 固定
+SK: timestamp (string)
+content: string         // 自動抽出された記憶（20字以内）
+// ※ カテゴリなし。会話ごとにgpt-4o-miniが自動抽出して保存
+```
+
+### テーブル: calendar_events（新規・Phase 2）
+```
+PK: sessionId (string)
 SK: date (string, YYYY-MM-DD)
 title: string
 description: string
 type: string          // anniversary / event / date / other
 ```
 
-### テーブル: story_status（新規）
+### テーブル: story_status（新規・Phase 2）
 ```
-PK: userId (string)
+PK: sessionId (string)
 SK: "current"
 relationship: string  // 関係ステータス
 phase: string         // フェーズ
@@ -124,9 +135,9 @@ details: map          // その他詳細
 updatedAt: string
 ```
 
-### テーブル: character_settings（新規）
+### テーブル: character_settings（新規・Phase 3）
 ```
-PK: userId (string)
+PK: sessionId (string)
 SK: characterId (string)
 name: string
 profile: map          // プロフィール情報
@@ -135,9 +146,9 @@ ngWords: list         // NG表現
 updatedAt: string
 ```
 
-### テーブル: ideals（新規）
+### テーブル: ideals（新規・Phase 3）
 ```
-PK: userId (string)
+PK: sessionId (string)
 SK: idealId (string, uuid)
 content: string       // 理想の内容
 isReflected: boolean  // ストーリーへの反映済みフラグ
@@ -146,17 +157,28 @@ createdAt: string
 
 ---
 
-## 7. API設計（Lambda エンドポイント）
+## 8. API設計（Lambda エンドポイント）
 
 現在のエンドポイント: `https://thvrcvcot4.execute-api.us-east-1.amazonaws.com/prod/chat`
 
-### 現在対応済み
-| type | 説明 |
-|------|------|
-| （なし / message送信） | チャット送信・返信取得・記憶書き込み |
-| `get_memory` | 記憶一覧取得 |
+### 現在対応済み（/prod/chat に集約）
+| リクエスト内容 | 説明 |
+|--------------|------|
+| `{ message: "..." }` | チャット送信 → 湊の返信 + 記憶自動抽出・保存 |
+| `{ type: "get_memory" }` | MinaMemoryから最新10件取得 |
 
-### 今後追加予定
+### Lambda内部の処理フロー（チャット時）
+```
+1. MinaMemory から最新10件取得（長期記憶）
+2. MinaChatHistory から最新10件取得（会話履歴）
+3. gpt-4o-mini に system prompt + 履歴 + 新メッセージを送信
+4. 同時に gpt-4o-mini で記憶抽出（20字以内、「なし」なら保存しない）
+5. MinaChatHistory に会話保存
+6. 記憶があれば MinaMemory に保存
+7. 湊の返信をレスポンス
+```
+
+### 今後追加予定（Phase 2〜3）
 | エンドポイントパス | メソッド | 説明 |
 |-------------------|---------|------|
 | `/calendar` | GET / POST | カレンダーイベント取得・登録 |
@@ -166,7 +188,7 @@ createdAt: string
 
 ---
 
-## 8. デザイン方針
+## 9. デザイン方針
 
 | 項目 | 方針 |
 |------|------|
@@ -178,7 +200,7 @@ createdAt: string
 
 ---
 
-## 9. 開発ロードマップ
+## 10. 開発ロードマップ
 
 ### Phase 1（現在）
 - [x] チャット画面
@@ -201,7 +223,7 @@ createdAt: string
 
 ---
 
-## 10. 技術スタック
+## 11. 技術スタック
 
 | レイヤー | 技術 |
 |---------|------|
@@ -210,4 +232,4 @@ createdAt: string
 | バックエンド | AWS Lambda（Node.js or Python） |
 | DB | AWS DynamoDB |
 | API | AWS API Gateway |
-| AI | Claude API（Anthropic） |
+| AI | OpenAI API（gpt-4o-mini） |
