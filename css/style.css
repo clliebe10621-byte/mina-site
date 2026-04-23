@@ -359,3 +359,74 @@ html, body {
     font-size: 13px;
     color: var(--text-sub);
 }
+
+/* ===== PC LAYOUT (768px+) ===== */
+@media (min-width: 768px) {
+    :root {
+        --side-nav-w: 180px;
+    }
+
+    /* App shifts right of side nav */
+    .app {
+        left: var(--side-nav-w);
+        bottom: 0;
+    }
+
+    /* Bottom tab → Left side nav */
+    .tab-bar {
+        top: 0;
+        left: 0;
+        right: auto;
+        bottom: 0;
+        width: var(--side-nav-w);
+        height: 100%;
+        flex-direction: column;
+        justify-content: flex-start;
+        align-items: stretch;
+        border-top: none;
+        border-right: 1px solid rgba(229, 224, 218, 0.6);
+        padding: 48px 0 24px;
+    }
+
+    .tab-item {
+        flex: 0 0 auto;
+        flex-direction: row;
+        justify-content: flex-start;
+        gap: 12px;
+        padding: 14px 24px;
+        font-size: 11px;
+        letter-spacing: 0.04em;
+    }
+
+    .tab-item svg {
+        width: 20px;
+        height: 20px;
+        flex-shrink: 0;
+    }
+
+    /* Compact chat area centered */
+    .chat-area {
+        max-width: 680px;
+        width: 100%;
+        align-self: center;
+        padding: 24px 32px 16px;
+    }
+
+    .input-area {
+        max-width: 680px;
+        width: 100%;
+        align-self: center;
+        padding: 12px 32px 20px;
+    }
+
+    /* LINE bubbles less spread */
+    .line-msg {
+        max-width: 52%;
+    }
+
+    /* Placeholder pages on PC */
+    .placeholder-page {
+        left: var(--side-nav-w);
+        bottom: 0;
+    }
+}

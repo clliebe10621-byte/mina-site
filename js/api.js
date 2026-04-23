@@ -44,7 +44,7 @@ function init() {
 
     const input = document.getElementById('userInput');
     input.addEventListener('keydown', e => {
-        if (e.key === 'Enter' && !e.shiftKey) {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
             e.preventDefault();
             sendMessage();
         }
