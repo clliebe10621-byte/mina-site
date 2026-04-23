@@ -63,86 +63,207 @@
 
 ---
 
-## 6. 画面構成（ページ一覧）
+## 6. シチュエーション設定
 
-### P1: チャット画面（実装済み）
-- ゆいから湊へのメッセージ送信
-- 湊からの返信表示
-- バックエンド：Lambda（プロンプト処理）+ DynamoDB（会話蓄積）
+### 6-1. チャットモード
 
-### P2: 記憶ログ画面（部分実装済み）
-- 湊が記憶した内容の一覧表示
-- カテゴリ別表示（会話・出来事・感情など）
-- 記憶の検索・フィルタ
+| モード | 説明 | 湊の出力形式 |
+|--------|------|-------------|
+| **いっしょモード** | 同じ場所で過ごしている | セリフ + *行動描写（斜体・地の文）* |
+| **LINEモード** | 別々の場所でやり取り | セリフのみ・LINEバブル表示 |
 
-### P3: カレンダー画面（未実装）
-- ふたりの記念日・出来事をカレンダーで表示
-- 日付タップで詳細表示
-- 新しい出来事の登録
+**いっしょモードの出力例：**
+```
+*コーヒーカップをテーブルに置いて、ゆいの方を見る*
+「……今日、疲れた顔してる」
+```
 
-### P4: ストーリー進行画面（未実装）
-- 現在の関係ステータス表示
-- タイムライン表示（関係の流れ）
-- フェーズの進行状況
+**LINEモードの出力例：**
+```
+[湊] 今どこにいる
+[湊] 寒くない？
+```
 
-### P5: キャラクターカスタマイズ画面（未実装）
-- 湊のプロフィール・設定の確認・編集
-- 口調・NG表現の設定
-- キャラクター画像（将来対応）
+### 6-2. デフォルトスケジュール（カレンダー連動）
 
-### P6: 理想入力画面（未実装）
-- ゆいがこれから起きてほしいことを入力
-- ストーリーへの反映設定
-- 理想シナリオの管理
+カレンダーに予定がない場合、以下のデフォルトが適用される：
+
+| 曜日・時間帯 | 場所 | モード |
+|------------|------|--------|
+| 平日 9:00〜18:00 | それぞれの職場 | LINE |
+| 平日 18:00〜23:00 | それぞれの自宅（湊宅メイン） | LINE→いっしょ（移動後） |
+| 平日 23:00〜 | 湊の家（ほぼ同棲） | いっしょ |
+| 土日・祝日 | デートまたは湊の家 | いっしょ |
+
+カレンダーに予定がある場合：その予定の場所・内容が優先される。
+
+### 6-3. 場所一覧
+
+| 場所ID | 場所名 | モード | 背景画像カテゴリ |
+|--------|--------|--------|----------------|
+| `home_minato` | 湊の家 | いっしょ | 落ち着いたインテリア |
+| `home_yui` | ゆいの家 | いっしょ | 明るめインテリア |
+| `workplace` | 職場 | LINE | オフィス・都市 |
+| `cafe` | カフェ | いっしょ/LINE | カフェ内装 |
+| `date_out` | 外出・デート | いっしょ | 京都の街・公園 |
+| `travel` | 旅行先 | いっしょ | 旅先の風景 |
 
 ---
 
-## 7. データ設計（DynamoDB）
+## 7. 画面構成（ページ一覧）
+
+### P1: チャット画面（リニューアル対象）
+- ホームページなし・起動時にチャット画面を直表示
+- スクロールなし（画面に収まるレイアウト）
+- 上部：時間帯・場所・モードのインジケーター
+- 中央：会話エリア（モードによって表示形式が変わる）
+- 下部：入力フォーム + 送信ボタン
+- **背景**：時間帯 × 場所の組み合わせで写真が変わる
+- バックエンド：Lambda（プロンプト処理）+ DynamoDB（会話蓄積）
+- **クロスデバイス対応**：sessionId固定のため、どの端末・ブラウザからでも同じ会話が継続される
+
+### P2: 記憶ログ画面
+- 湊が記憶した内容の一覧表示（MinaMemoryから取得）
+- シンプルなリスト表示
+- スクロールあり（記憶が増えるため）
+
+### P3: カレンダー画面
+- ふたりの共有カレンダーイメージ
+- 記念日・思い出・予定を表示
+- **デフォルトスケジュールの設定**（平日/土日のデフォルト場所・モードを管理）
+- イベント登録：場所・モード・タイトルを設定
+- 登録したイベントがチャットのシチュエーションに自動反映
+
+### P4: ストーリー進行画面
+- 現在の関係ステータス表示
+- タイムライン（関係の流れ）
+
+### P5: キャラクターカスタマイズ画面
+- 湊のプロフィール・口調ルール確認・編集
+- NG表現の管理
+
+### P6: 理想入力画面
+- ゆいがこれから起きてほしいことを入力
+- ストーリーへの反映管理
+
+---
+
+## 8. デザイン方針
+
+### カラーパレット（ベース）
+
+| 役割 | カラー | 用途 |
+|------|--------|------|
+| Background | `#F7F5F1` | 基本背景（写真なし時） |
+| Surface | `#FFFFFF` | カード・入力エリア |
+| Text Primary | `#1A1A1A` | メインテキスト |
+| Text Secondary | `#888888` | サブテキスト・日時 |
+| Accent | `#5C7A8A` | ボタン・リンク（くすみブルー） |
+| Border | `#E5E0DA` | 区切り線・枠 |
+
+### 時間帯別背景（写真ベース・フリー素材）
+
+| 時間帯 | 時刻 | 背景イメージ | 色オーバーレイ |
+|--------|------|------------|--------------|
+| 早朝 | 5:00〜7:00 | 朝靄の京都・夜明け | 薄いラベンダー |
+| 朝 | 7:00〜11:00 | 朝の光・街並み | なし（明るい） |
+| 昼 | 11:00〜16:00 | 昼間のカフェ・街 | なし |
+| 夕方 | 16:00〜19:00 | 夕暮れ・オレンジの空 | 薄いアンバー |
+| 夜 | 19:00〜23:00 | 夜の京都・街灯 | 暗め |
+| 深夜 | 23:00〜5:00 | 静かな夜・室内灯 | 暗め・テキスト白 |
+
+### タイポグラフィ
+
+| 用途 | フォント | ウェイト |
+|------|---------|---------|
+| 日本語 本文 | Noto Sans JP | 300（Light）|
+| 日本語 強調 | Noto Sans JP | 400（Regular）|
+| 英字・数字 | DM Sans or system-ui | 300〜400 |
+| 行動描写（地の文） | Noto Sans JP | 300・斜体・グレー |
+
+### レイアウト原則
+
+- **モバイルファースト**（スマホで使うことが多い）
+- **スクロールなし**（チャット画面）：`100dvh` で収める
+- **余白を多く**：参考画像のようなゆったりした空気感
+- **アニメーション**：フェードのみ・控えめ
+
+### ナビゲーション
+
+- 画面下タブバー（固定）
+- アイコン + 小さいラベル
+- タブ：チャット / カレンダー / 記憶 / ストーリー / 設定
+
+---
+
+## 9. クロスデバイス対応
+
+- **現状すでに対応済み**：sessionId = `"session_001"` 固定のため、どの端末・ブラウザからアクセスしても同じDynamoDBのデータを参照する
+- 会話履歴・記憶ログはすべてサーバー側（DynamoDB）に保存されるため、ローカルストレージに依存しない
+- ローカルに保存するもの：なし（Cookieやlocalstorageは使わない）
+
+---
+
+## 10. データ設計（DynamoDB）
 
 ### テーブル: MinaChatHistory（既存）
 ```
-PK: sessionId (string)  // 現在 "session_001" 固定（将来: ユーザーID）
+PK: sessionId (string)  // "session_001" 固定
 SK: timestamp (string)  // Date.now().toString()
-userText: string        // ゆいの発言
-minaText: string        // 湊の返答
+userText: string
+minaText: string
+mode: string            // "together" / "line"（追加予定）
+location: string        // 場所ID（追加予定）
 ```
 
 ### テーブル: MinaMemory（既存）
 ```
-PK: sessionId (string)  // 現在 "session_001" 固定
+PK: sessionId (string)
 SK: timestamp (string)
-content: string         // 自動抽出された記憶（20字以内）
-// ※ カテゴリなし。会話ごとにgpt-4o-miniが自動抽出して保存
+content: string         // 自動抽出（20字以内）
 ```
 
 ### テーブル: calendar_events（新規・Phase 2）
 ```
 PK: sessionId (string)
-SK: date (string, YYYY-MM-DD)
+SK: eventId (string)    // YYYY-MM-DD#uuid
+date: string            // YYYY-MM-DD
 title: string
-description: string
-type: string          // anniversary / event / date / other
+locationId: string      // 場所ID（home_minato / cafe / etc.）
+mode: string            // "together" / "line"
+type: string            // "anniversary" / "plan" / "memory"
+startTime: string       // HH:MM（任意）
+endTime: string         // HH:MM（任意）
 ```
 
-### テーブル: story_status（新規・Phase 2）
+### テーブル: default_schedule（新規・Phase 2）
+```
+PK: sessionId (string)
+SK: ruleId (string)     // "weekday_work" / "weekday_night" / "weekend" など
+dayType: string         // "weekday" / "weekend"
+startTime: string       // HH:MM
+endTime: string         // HH:MM
+locationId: string
+mode: string
+```
+
+### テーブル: story_status（新規・Phase 3）
 ```
 PK: sessionId (string)
 SK: "current"
-relationship: string  // 関係ステータス
-phase: string         // フェーズ
-startDate: string     // 交際開始日
-details: map          // その他詳細
+relationship: string
+phase: string
+startDate: string
 updatedAt: string
 ```
 
 ### テーブル: character_settings（新規・Phase 3）
 ```
 PK: sessionId (string)
-SK: characterId (string)
-name: string
-profile: map          // プロフィール情報
-toneRules: list       // 口調ルール
-ngWords: list         // NG表現
+SK: "minato"
+profile: map
+toneRules: list
+ngWords: list
 updatedAt: string
 ```
 
@@ -150,86 +271,79 @@ updatedAt: string
 ```
 PK: sessionId (string)
 SK: idealId (string, uuid)
-content: string       // 理想の内容
-isReflected: boolean  // ストーリーへの反映済みフラグ
+content: string
+isReflected: boolean
 createdAt: string
 ```
 
 ---
 
-## 8. API設計（Lambda エンドポイント）
+## 11. API設計（Lambda エンドポイント）
 
 現在のエンドポイント: `https://thvrcvcot4.execute-api.us-east-1.amazonaws.com/prod/chat`
 
-### 現在対応済み（/prod/chat に集約）
-| リクエスト内容 | 説明 |
-|--------------|------|
-| `{ message: "..." }` | チャット送信 → 湊の返信 + 記憶自動抽出・保存 |
-| `{ type: "get_memory" }` | MinaMemoryから最新10件取得 |
+### 現在対応済み
+| リクエスト | 説明 |
+|-----------|------|
+| `{ message: "..." }` | チャット送信 → 返信 + 記憶保存 |
+| `{ type: "get_memory" }` | 記憶一覧取得 |
 
 ### Lambda内部の処理フロー（チャット時）
 ```
-1. MinaMemory から最新10件取得（長期記憶）
-2. MinaChatHistory から最新10件取得（会話履歴）
-3. gpt-4o-mini に system prompt + 履歴 + 新メッセージを送信
-4. 同時に gpt-4o-mini で記憶抽出（20字以内、「なし」なら保存しない）
-5. MinaChatHistory に会話保存
-6. 記憶があれば MinaMemory に保存
-7. 湊の返信をレスポンス
+1. MinaMemory から最新10件取得
+2. MinaChatHistory から最新10件取得
+3. gpt-4o-mini に system prompt + 履歴 + モード情報 + 新メッセージを送信
+4. 同時に記憶抽出（20字以内）
+5. 会話・記憶を保存
+6. 湊の返信をレスポンス
 ```
 
 ### 今後追加予定（Phase 2〜3）
-| エンドポイントパス | メソッド | 説明 |
-|-------------------|---------|------|
-| `/calendar` | GET / POST | カレンダーイベント取得・登録 |
-| `/story` | GET / POST | ストーリーステータス取得・更新 |
-| `/character` | GET / POST | キャラクター設定取得・更新 |
-| `/ideals` | GET / POST / DELETE | 理想の取得・登録・削除 |
+| パス | メソッド | 説明 |
+|------|---------|------|
+| `/calendar` | GET / POST / DELETE | カレンダーイベント管理 |
+| `/schedule/default` | GET / POST | デフォルトスケジュール管理 |
+| `/story` | GET / POST | ストーリーステータス |
+| `/character` | GET / POST | キャラクター設定 |
+| `/ideals` | GET / POST / DELETE | 理想管理 |
+| `/situation` | GET | 現在のシチュエーション取得（時刻+カレンダー参照） |
 
 ---
 
-## 9. デザイン方針
+## 12. 開発ロードマップ
 
-| 項目 | 方針 |
-|------|------|
-| 雰囲気 | 落ち着いた・大人っぽい・静かな温かみ |
-| カラー | ホワイト・グレー系ベース、アクセントは深いネイビーまたはテラコッタ |
-| フォント | 日本語：游ゴシックまたはNoto Sans JP / 英字：シンプルなサンセリフ |
-| レイアウト | モバイルファースト（スマホで使うことが多い） |
-| アニメーション | 控えめ・過剰にしない |
-
----
-
-## 10. 開発ロードマップ
-
-### Phase 1（現在）
-- [x] チャット画面
-- [x] 記憶ログ（基本表示）
-- [ ] デザイン全体リニューアル
-- [ ] ナビゲーション（複数ページ対応）
+### Phase 1（次のステップ）
+- [ ] デザインリニューアル（カラー・フォント・レイアウト）
+- [ ] 下タブナビゲーション
+- [ ] 背景：時間帯別写真切り替え
+- [ ] チャット：LINEモード / いっしょモードのUI
+- [ ] 背景画像の素材収集・配置
 
 ### Phase 2
 - [ ] カレンダー画面
-- [ ] ストーリー進行画面
+- [ ] デフォルトスケジュール設定
+- [ ] シチュエーション自動判定（時刻 + カレンダー）
+- [ ] 場所連動の背景切り替え
+- [ ] 記憶ログ画面（独立ページ）
 
 ### Phase 3
+- [ ] ストーリー進行画面
 - [ ] キャラクターカスタマイズ画面
 - [ ] 理想入力画面
 
 ### Phase 4（将来）
-- [ ] マルチユーザー対応（他の人も使えるように）
-- [ ] 認証機能（ログイン）
-- [ ] キャラクター画像
+- [ ] マルチユーザー対応・認証
 
 ---
 
-## 11. 技術スタック
+## 13. 技術スタック
 
 | レイヤー | 技術 |
 |---------|------|
-| フロントエンド | HTML / CSS / JavaScript（当面はシンプルに） |
+| フロントエンド | HTML / CSS / JavaScript |
 | ホスティング | AWS Amplify（GitHub連携・自動デプロイ） |
-| バックエンド | AWS Lambda（Node.js or Python） |
+| バックエンド | AWS Lambda（Node.js） |
 | DB | AWS DynamoDB |
 | API | AWS API Gateway |
 | AI | OpenAI API（gpt-4o-mini） |
+| 背景画像 | フリー素材（Unsplash / PAKUTASO等） |
