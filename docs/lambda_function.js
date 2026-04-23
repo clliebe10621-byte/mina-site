@@ -116,7 +116,7 @@ async function extractAndSaveMemory(userText, minaText) {
         TableName: 'MinaMemory',
         Item: marshall({
           sessionId: SESSION_ID,
-          timestamp: Date.now().toString(),
+          memoryKey: Date.now().toString(),
           content
         })
       }));
