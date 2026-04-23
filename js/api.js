@@ -34,11 +34,31 @@ function getSituation() {
 let currentSituation = getSituation();
 let isSending = false;
 
+// ===== チャット履歴の永続化 =====
+const CHAT_STORAGE_KEY = 'mina_chat_html';
+
+function saveChatToStorage() {
+    try {
+        sessionStorage.setItem(CHAT_STORAGE_KEY, document.getElementById('chatArea').innerHTML);
+    } catch(e) {}
+}
+
+function restoreChatFromStorage() {
+    try {
+        const saved = sessionStorage.getItem(CHAT_STORAGE_KEY);
+        if (saved) {
+            document.getElementById('chatArea').innerHTML = saved;
+            scrollBottom();
+        }
+    } catch(e) {}
+}
+
 // ===== 初期化 =====
 function init() {
     updateBackground(currentSituation);
     updateTopBar(currentSituation);
     updateClock();
+    restoreChatFromStorage();
     setInterval(updateClock, 1000);
     setInterval(checkSituationChange, 60000);
 
@@ -141,10 +161,11 @@ function appendUserMessage(text, mode) {
     } else {
         const wrap = document.createElement('div');
         wrap.className = 'together-msg yui';
-        wrap.innerHTML = `<p class="dialogue-text">${escHtml(text)}</p>`;
+        wrap.innerHTML = `<div class="dialogue-bubble">${escHtml(text)}</div>`;
         area.appendChild(wrap);
     }
     scrollBottom();
+    saveChatToStorage();
 }
 
 function appendMinatoMessage(text, mode) {
@@ -162,6 +183,7 @@ function appendMinatoMessage(text, mode) {
         area.appendChild(wrap);
     }
     scrollBottom();
+    saveChatToStorage();
 }
 
 function appendTyping(mode) {
@@ -197,6 +219,7 @@ function appendError() {
     el.textContent = '送信に失敗しました。もう一度試してください。';
     area.appendChild(el);
     scrollBottom();
+    saveChatToStorage();
 }
 
 // ===== テキスト整形 =====
@@ -206,13 +229,39 @@ function formatLine(text) {
 
 function formatTogether(text) {
     const lines = text.split('\n').filter(l => l.trim());
-    return lines.map(line => {
-        // *action* → action-text
-        if (/^\*(.+)\*$/.test(line)) {
-            return `<p class="action-text">${escHtml(line.slice(1, -1))}</p>`;
+    const result = [];
+
+    lines.forEach(line => {
+        const trimmed = line.trim();
+
+        // 行全体が *action* の場合
+        if (/^\*([^*]+)\*$/.test(trimmed)) {
+            result.push(`<p class="action-text">${escHtml(trimmed.slice(1, -1))}</p>`);
+            return;
         }
-        return `<p class="dialogue-text">${escHtml(line)}</p>`;
-    }).join('');
+
+        // 行内に *action* が混在する場合（例：「セリフ *行動* セリフ」）
+        if (trimmed.includes('*')) {
+            const parts = trimmed.split(/(\*[^*]+\*)/g);
+            const actions = [];
+            const dialogues = [];
+            parts.forEach(part => {
+                if (/^\*([^*]+)\*$/.test(part)) {
+                    actions.push(escHtml(part.slice(1, -1)));
+                } else if (part.trim()) {
+                    dialogues.push(escHtml(part.trim()));
+                }
+            });
+            if (actions.length)   result.push(`<p class="action-text">${actions.join('・')}</p>`);
+            if (dialogues.length) result.push(`<div class="dialogue-bubble">${dialogues.join(' ')}</div>`);
+            return;
+        }
+
+        // 純粋なセリフ行
+        result.push(`<div class="dialogue-bubble">${escHtml(trimmed)}</div>`);
+    });
+
+    return result.join('');
 }
 
 function escHtml(str) {

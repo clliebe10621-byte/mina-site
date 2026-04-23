@@ -159,38 +159,53 @@ html, body {
 
 /* ===== TOGETHER MODE ===== */
 .together-msg {
-    align-self: center;
-    text-align: center;
-    max-width: 300px;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    max-width: 72%;
+    gap: 4px;
+}
+
+.together-msg.minato {
+    align-self: flex-start;
+    align-items: flex-start;
 }
 
 .together-msg.yui {
-    max-width: 280px;
+    align-self: flex-end;
+    align-items: flex-end;
 }
 
+/* 行動描写：吹き出し外・斜体・薄字 */
 .action-text {
-    font-size: 12px;
+    font-size: 11px;
     font-style: italic;
-    color: rgba(255, 255, 255, 0.5);
+    color: rgba(255, 255, 255, 0.42);
     line-height: 1.6;
     letter-spacing: 0.02em;
+    padding: 0 4px;
 }
 
-.dialogue-text {
-    font-size: 15px;
+/* いっしょモードの吹き出し */
+.dialogue-bubble {
+    padding: 11px 16px;
+    font-size: 14px;
+    line-height: 1.7;
     font-weight: 300;
-    color: rgba(255, 255, 255, 0.95);
-    line-height: 1.9;
-    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
-    letter-spacing: 0.02em;
+    word-break: break-word;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
 }
 
-.together-msg.yui .dialogue-text {
-    font-size: 13px;
-    color: rgba(255, 255, 255, 0.6);
+.together-msg.minato .dialogue-bubble {
+    background: rgba(18, 18, 18, 0.72);
+    color: rgba(255, 255, 255, 0.95);
+    border-radius: 20px 20px 20px 4px;
+}
+
+.together-msg.yui .dialogue-bubble {
+    background: rgba(92, 122, 138, 0.88);
+    color: #fff;
+    border-radius: 20px 20px 4px 20px;
 }
 
 /* ===== TYPING INDICATOR ===== */
