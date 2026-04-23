@@ -177,7 +177,7 @@ html, body {
 
 /* 行動描写：吹き出し外・斜体・薄字 */
 .action-text {
-    font-size: 11px;
+    font-size: 13px;
     font-style: italic;
     color: rgba(255, 255, 255, 0.42);
     line-height: 1.6;

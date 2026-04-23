@@ -97,6 +97,27 @@ function updateBackground(sit) {
     }, 400);
 }
 
+// ===== キーワード→背景切り替え =====
+const KEYWORD_BG = [
+    { words: ['キッチン', '台所', '料理', '炒め', 'コンロ', '鍋'],       bg: () => 'yui-kitchen' },
+    { words: ['お風呂', '風呂', 'シャワー', 'バスルーム'],               bg: () => 'minato-bathroom' },
+    { words: ['ベッド', '布団', '寝室', '横になる', '寝よう', '寝転'],   bg: () => 'minato-bedroom-night' },
+    { words: ['カフェ', 'コーヒーショップ', 'コーヒー豆'],               bg: () => new Date().getHours() >= 18 ? 'cafe-night' : 'cafe-day' },
+    { words: ['リビング', 'ソファ', 'テレビ', 'テレビ見'],               bg: () => new Date().getHours() >= 18 ? 'minato-living-night' : 'minato-living-day' },
+];
+
+function checkKeywordBackground(text) {
+    for (const entry of KEYWORD_BG) {
+        if (entry.words.some(w => text.includes(w))) {
+            const newBg = entry.bg();
+            if (newBg !== currentSituation.bg) {
+                updateBackground({ bg: newBg });
+            }
+            return;
+        }
+    }
+}
+
 function updateTopBar(sit) {
     document.getElementById('locationName').textContent = sit.label;
     const tag = document.getElementById('modeTag');
@@ -138,7 +159,9 @@ async function sendMessage() {
 
         const data = await res.json();
         typing.remove();
-        appendMinatoMessage(data.reply || '…', sit.mode);
+        const reply = data.reply || '…';
+        appendMinatoMessage(reply, sit.mode);
+        checkKeywordBackground(text + ' ' + reply);
     } catch {
         typing.remove();
         appendError();
