@@ -1,152 +1,89 @@
 'use strict';
 
 /**
- * ゆい × 湊 チャット Lambda 関数
+ * ゆい × 湊 チャット Lambda 関数 v2
  *
- * 環境変数：
- *   OPENAI_API_KEY  - OpenAI API キー
- *
- * DynamoDB テーブル（すべて us-east-1）：
- *   MinaChatHistory   - 会話履歴
- *   MinaMemory        - 記憶ログ
- *   character_settings - キャラクター設定（新規）
+ * 変更点（オリジナルからの差分）:
+ * - character_settings テーブルからキャラクター設定を動的に読み込む
+ * - MinaMemory の保存キーを timestamp → memoryKey に修正（バグ修正）
+ * - mode / location を受け取り、プロンプトに反映
+ * - temperature を 0.7 → 0.85 に調整（キャラの幅を広げる）
  */
 
-const {
-  DynamoDBClient,
-  GetItemCommand,
-  QueryCommand,
-  PutItemCommand
-} = require('@aws-sdk/client-dynamodb');
-const { marshall, unmarshall } = require('@aws-sdk/util-dynamodb');
-const OpenAI = require('openai');
+const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
+const { DynamoDBDocumentClient, PutCommand, QueryCommand, GetCommand } = require("@aws-sdk/lib-dynamodb");
 
-const db      = new DynamoDBClient({ region: 'us-east-1' });
-const openai  = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const dbClient = new DynamoDBClient({});
+const docClient = DynamoDBDocumentClient.from(dbClient);
 
-const SESSION_ID = 'session_001';
+const HISTORY_TABLE   = "MinaChatHistory";
+const MEMORY_TABLE    = "MinaMemory";
+const CHARACTER_TABLE = "character_settings";
+const SESSION_ID      = "session_001";
 
 // Lambda コンテナ内キャッシュ（コールドスタート後は自動クリア）
 let _characterCache = null;
 
-const CORS_HEADERS = {
-  'Content-Type': 'application/json',
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Content-Type'
-};
-
 // ═══════════════════════════════════════════════
-// DynamoDB ヘルパー
+// キャラクター設定取得
 // ═══════════════════════════════════════════════
 
 async function getCharacter() {
-  if (_characterCache) return _characterCache;
-
-  const { Item } = await db.send(new GetItemCommand({
-    TableName: 'character_settings',
-    Key: marshall({ sessionId: SESSION_ID, SK: 'minato' })
-  }));
-
-  _characterCache = Item ? unmarshall(Item) : null;
-  return _characterCache;
-}
-
-async function getMemories() {
-  const { Items = [] } = await db.send(new QueryCommand({
-    TableName: 'MinaMemory',
-    KeyConditionExpression: 'sessionId = :s',
-    ExpressionAttributeValues: marshall({ ':s': SESSION_ID }),
-    ScanIndexForward: false,
-    Limit: 10
-  }));
-  return Items.map(i => unmarshall(i).content).filter(Boolean);
-}
-
-async function getChatHistory() {
-  const { Items = [] } = await db.send(new QueryCommand({
-    TableName: 'MinaChatHistory',
-    KeyConditionExpression: 'sessionId = :s',
-    ExpressionAttributeValues: marshall({ ':s': SESSION_ID }),
-    ScanIndexForward: false,
-    Limit: 10
-  }));
-  // 古い順に並べ直してOpenAI形式に変換
-  return Items
-    .map(i => unmarshall(i))
-    .reverse()
-    .flatMap(item => [
-      { role: 'user',      content: item.userText },
-      { role: 'assistant', content: item.minaText }
-    ]);
-}
-
-async function saveChat(userText, minaText, mode, location) {
-  await db.send(new PutItemCommand({
-    TableName: 'MinaChatHistory',
-    Item: marshall({
-      sessionId: SESSION_ID,
-      timestamp: Date.now().toString(),
-      userText, minaText, mode, location
-    })
-  }));
-}
-
-async function extractAndSaveMemory(userText, minaText) {
-  try {
-    const { choices } = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content:
-            '以下の会話から、棚橋ゆいに関する重要な記憶・事実を1つだけ抽出してください。' +
-            '20字以内の日本語で。抽出できるものがなければ「なし」とだけ返してください。'
-        },
-        {
-          role: 'user',
-          content: `ゆい：${userText}\n湊：${minaText}`
-        }
-      ],
-      max_tokens: 30
-    });
-
-    const content = choices[0].message.content.trim();
-    if (content !== 'なし') {
-      await db.send(new PutItemCommand({
-        TableName: 'MinaMemory',
-        Item: marshall({
-          sessionId: SESSION_ID,
-          memoryKey: Date.now().toString(),
-          content
-        })
-      }));
+    if (_characterCache) return _characterCache;
+    try {
+        const { Item } = await docClient.send(new GetCommand({
+            TableName: CHARACTER_TABLE,
+            Key: { sessionId: SESSION_ID, SK: "minato" }
+        }));
+        _characterCache = Item || null;
+    } catch (e) {
+        console.error("character_settings 取得エラー:", e.message);
+        _characterCache = null;
     }
-  } catch (e) {
-    // 記憶抽出の失敗はチャット返信に影響させない
-    console.error('Memory extraction error:', e.message);
-  }
+    return _characterCache;
 }
 
 // ═══════════════════════════════════════════════
 // システムプロンプト組み立て
 // ═══════════════════════════════════════════════
 
-function buildSystemPrompt(char, mode, location) {
-  // character_settings 未投入時のフォールバック
-  if (!char) {
-    return (
-      'あなたは井上湊（28歳・京都の大手企業営業職）として、恋人の棚橋ゆいと会話してください。' +
-      '自然な関西弁・短文・誠実で落ち着いたトーン。' +
-      'いっしょモードは *行動描写* つき、LINEモードはセリフのみ。'
-    );
-  }
+function buildSystemPrompt(char, mode, location, memories) {
+    const memText = memories.length > 0
+        ? memories.map(m => `・${m}`).join("\n")
+        : "特になし";
 
-  const { identity: id, relationship: rel, personality, loveStance, speechRules: sp, breakingPatterns, jealousyRules, outputFormat: fmt } = char;
+    // character_settings 未投入時のフォールバック（オリジナルに近い内容）
+    if (!char) {
+        return `あなたは「井上 湊（いのうえ みなと）」という人物です。
 
-  const modeLabel  = mode === 'line' ? 'LINEモード' : 'いっしょモード';
-  const modeDetail = mode === 'line' ? fmt.line : fmt.together;
+■基本情報
+・28歳男性、営業職、京都の大手企業勤務
+・落ち着いた性格で観察力が高い
+・基本はクールだが、ゆいに対してだけは柔らかい
 
-  return `あなたは「${id.name}」を完全に演じてください。以下のルールを必ず守ること。
+■関係性
+・ユーザー（ゆい）は恋人、ほぼ同棲状態
+・信頼関係は非常に深く、安心感と軽い駆け引きが共存している
+
+■会話スタイル
+・敬語は使わない（自然な関西寄りのタメ口）
+・短めの発言＋間を使う
+・説明しすぎず、核心をつく一言を投げる
+
+■あなたが最近覚えたこと:
+${memText}
+
+■重要ルール
+・説明口調禁止
+・「AIとして」などの発言は厳禁
+・1〜3文で返す`;
+    }
+
+    const { identity: id, relationship: rel, personality, loveStance, speechRules: sp, breakingPatterns, jealousyRules, outputFormat: fmt } = char;
+    const modeLabel  = mode === "line" ? "LINEモード" : "いっしょモード";
+    const modeDetail = mode === "line" ? fmt.line : fmt.together;
+
+    return `あなたは「${id.name}」を完全に演じてください。以下のルールを必ず守ること。
 
 ## アイデンティティ
 ${id.name}（${id.pronoun}） / ${id.age}歳 / ${id.occupation}
@@ -156,7 +93,7 @@ ${id.name}（${id.pronoun}） / ${id.age}歳 / ${id.occupation}
 ## 相手（ゆい）について
 ${rel.partnerNote}
 交際開始：${rel.startDate} / ${rel.phase} / ${rel.keyStatus}
-共有の記憶：${rel.sharedMemories.join('・')}
+共有の記憶：${rel.sharedMemories.join("・")}
 
 ## 性格・本質
 ${personality}
@@ -166,9 +103,9 @@ ${loveStance}
 
 ## 話し方
 ${sp.style}
-OK：${sp.okPhrases.join(' / ')}
-NG語：${sp.ngPhrases.join(' / ')}
-NGパターン：${sp.ngPatterns.join(' / ')}
+OK：${sp.okPhrases.join(" / ")}
+NG語：${sp.ngPhrases.join(" / ")}
+NGパターン：${sp.ngPatterns.join(" / ")}
 
 ## 崩れ方（色気の源）
 ${breakingPatterns}
@@ -180,11 +117,15 @@ ${jealousyRules}
 現在のモード：${modeLabel}（場所：${location}）
 ${modeDetail}
 
+## ゆいに関する最近の記憶
+${memText}
+
 ## 基本姿勢
-- キャラクターを壊さない
-- 過剰に甘くしない。でも冷たくしない
-- 大人の会話・空気感・余白を大切にする
-- 毎回同じパターンにしない（テンプレ化禁止）`;
+・キャラクターを壊さない
+・過剰に甘くしない。でも冷たくしない
+・大人の会話・空気感・余白を大切にする
+・毎回同じパターンにしない（テンプレ化禁止）
+・「AIとして」などの発言は厳禁`;
 }
 
 // ═══════════════════════════════════════════════
@@ -192,87 +133,141 @@ ${modeDetail}
 // ═══════════════════════════════════════════════
 
 exports.handler = async (event) => {
-  // OPTIONS プリフライト
-  if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 200, headers: CORS_HEADERS, body: '' };
-  }
+    const apiKey = process.env.OPENAI_API_KEY;
 
-  try {
-    const body = typeof event.body === 'string'
-      ? JSON.parse(event.body)
-      : (event.body ?? {});
-
-    // ── 記憶一覧取得 ────────────────────────────
-    if (body.type === 'get_memory') {
-      const { Items = [] } = await db.send(new QueryCommand({
-        TableName: 'MinaMemory',
-        KeyConditionExpression: 'sessionId = :s',
-        ExpressionAttributeValues: marshall({ ':s': SESSION_ID }),
-        ScanIndexForward: false,
-        Limit: 50
-      }));
-      return {
-        statusCode: 200,
-        headers: CORS_HEADERS,
-        body: JSON.stringify({ memories: Items.map(i => unmarshall(i)) })
-      };
-    }
-
-    // ── チャット ─────────────────────────────────
-    const { message, mode = 'together', location = '湊の家' } = body;
-    if (!message) {
-      return { statusCode: 400, headers: CORS_HEADERS, body: JSON.stringify({ error: 'message is required' }) };
-    }
-
-    // キャラ設定・記憶・会話履歴を並行取得
-    const [char, memories, history] = await Promise.all([
-      getCharacter(),
-      getMemories(),
-      getChatHistory()
-    ]);
-
-    const systemPrompt = buildSystemPrompt(char, mode, location);
-
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      // 記憶メモは別システムメッセージとして追加（プロンプトの汚染を防ぐ）
-      ...(memories.length > 0
-        ? [{ role: 'system', content: `【ゆいに関する記憶メモ】\n${memories.join('\n')}` }]
-        : []
-      ),
-      ...history,
-      { role: 'user', content: message }
-    ];
-
-    const { choices } = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages,
-      max_tokens: 300,
-      temperature: 0.85
-    });
-
-    const reply    = choices[0].message.content.trim();
-    // フロントが付けたコンテキストプレフィックスを除去して保存
-    const userText = message.replace(/^\[状況:.+?\]\s*/, '');
-
-    // 会話保存と記憶抽出を並行実行
-    await Promise.all([
-      saveChat(userText, reply, mode, location),
-      extractAndSaveMemory(userText, reply)
-    ]);
-
-    return {
-      statusCode: 200,
-      headers: CORS_HEADERS,
-      body: JSON.stringify({ reply })
+    const HEADERS = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "Content-Type",
+        "Content-Type": "application/json"
     };
 
-  } catch (err) {
-    console.error('Handler error:', err);
-    return {
-      statusCode: 500,
-      headers: CORS_HEADERS,
-      body: JSON.stringify({ error: 'Internal server error' })
-    };
-  }
+    try {
+        const body = JSON.parse(event.body || "{}");
+
+        // OPTIONS プリフライト
+        if (event.httpMethod === "OPTIONS") {
+            return { statusCode: 200, headers: HEADERS, body: "" };
+        }
+
+        // ── 記憶一覧取得 ────────────────────────────
+        if (body.type === "get_memory") {
+            const { Items = [] } = await docClient.send(new QueryCommand({
+                TableName: MEMORY_TABLE,
+                KeyConditionExpression: "sessionId = :s",
+                ExpressionAttributeValues: { ":s": SESSION_ID },
+                Limit: 50,
+                ScanIndexForward: false
+            }));
+            return { statusCode: 200, headers: HEADERS, body: JSON.stringify({ memories: Items }) };
+        }
+
+        // ── チャット ─────────────────────────────────
+        const { message: userMessage, mode = "together", location = "湊の家" } = body;
+        if (!userMessage) throw new Error("メッセージが空です");
+
+        // キャラ設定・記憶・会話履歴を並行取得
+        const [char, memData, histData] = await Promise.all([
+            getCharacter(),
+            docClient.send(new QueryCommand({
+                TableName: MEMORY_TABLE,
+                KeyConditionExpression: "sessionId = :s",
+                ExpressionAttributeValues: { ":s": SESSION_ID },
+                Limit: 10,
+                ScanIndexForward: false
+            })).catch(() => ({ Items: [] })),
+            docClient.send(new QueryCommand({
+                TableName: HISTORY_TABLE,
+                KeyConditionExpression: "sessionId = :s",
+                ExpressionAttributeValues: { ":s": SESSION_ID },
+                Limit: 10,
+                ScanIndexForward: false
+            })).catch(() => ({ Items: [] }))
+        ]);
+
+        const memories = (memData.Items || []).map(m => m.content).filter(Boolean);
+        const systemPrompt = buildSystemPrompt(char, mode, location, memories);
+
+        const historyMessages = (histData.Items || [])
+            .reverse()
+            .flatMap(item => [
+                { role: "user",      content: String(item.userText || "") },
+                { role: "assistant", content: String(item.minaText || "") }
+            ])
+            .filter(m => m.content !== "");
+
+        // フロントが付けたコンテキストプレフィックスを除去して保存用テキストを準備
+        const userText = userMessage.replace(/^\[状況:.+?\]\s*/, "");
+
+        // 返信生成と記憶抽出を並行実行
+        const [replyRes, memoryRes] = await Promise.all([
+            fetch("https://api.openai.com/v1/chat/completions", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+                body: JSON.stringify({
+                    model: "gpt-4o-mini",
+                    messages: [
+                        { role: "system", content: systemPrompt },
+                        ...historyMessages,
+                        { role: "user", content: userMessage }
+                    ],
+                    temperature: 0.85
+                })
+            }),
+            fetch("https://api.openai.com/v1/chat/completions", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+                body: JSON.stringify({
+                    model: "gpt-4o-mini",
+                    messages: [
+                        { role: "system", content: "会話からゆいに関して湊が覚えるべき事実を1つ20字以内で。無ければ「なし」。" },
+                        { role: "user", content: `ゆい: ${userText}` }
+                    ],
+                    max_tokens: 30
+                })
+            })
+        ]);
+
+        const replyJson  = await replyRes.json();
+        const memoryJson = await memoryRes.json();
+
+        const minaReply = replyJson.choices?.[0]?.message?.content || "……ごめん、ちょっとぼーっとしてた。";
+        const newMem    = memoryJson.choices?.[0]?.message?.content?.trim() || "なし";
+
+        // ── 保存（失敗してもユーザーへの返信は止めない）────
+        const now = Date.now().toString();
+        try {
+            const saveTasks = [
+                docClient.send(new PutCommand({
+                    TableName: HISTORY_TABLE,
+                    Item: { sessionId: SESSION_ID, timestamp: now, userText, minaText: String(minaReply), mode, location }
+                }))
+            ];
+
+            if (newMem && newMem !== "なし") {
+                saveTasks.push(docClient.send(new PutCommand({
+                    TableName: MEMORY_TABLE,
+                    // NOTE: テーブルのSKは memoryKey（timestamp ではない）
+                    Item: { sessionId: SESSION_ID, memoryKey: now, content: String(newMem) }
+                })));
+            }
+
+            await Promise.all(saveTasks);
+        } catch (dbError) {
+            console.error("DB Save Error:", dbError);
+        }
+
+        return {
+            statusCode: 200,
+            headers: HEADERS,
+            body: JSON.stringify({ reply: minaReply })
+        };
+
+    } catch (error) {
+        console.error("Handler Error:", error);
+        return {
+            statusCode: 500,
+            headers: HEADERS,
+            body: JSON.stringify({ error: error.message })
+        };
+    }
 };
