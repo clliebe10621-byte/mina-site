@@ -98,19 +98,53 @@ function updateBackground(sit) {
 }
 
 // ===== キーワード→背景切り替え =====
+
+// 現在の背景プレフィックスから「どの家にいるか」を判定
+function getLocationOwner() {
+    const bg = currentSituation.bg;
+    if (bg.startsWith('minato-')) return 'minato';
+    if (bg.startsWith('yui-'))   return 'yui';
+    return null; // 職場・カフェなど外はキーワード切り替えなし
+}
+
 const KEYWORD_BG = [
-    { words: ['キッチン', '台所', '料理', '炒め', 'コンロ', '鍋'],       bg: () => 'yui-kitchen' },
-    { words: ['お風呂', '風呂', 'シャワー', 'バスルーム'],               bg: () => 'minato-bathroom' },
-    { words: ['ベッド', '布団', '寝室', '横になる', '寝よう', '寝転'],   bg: () => 'minato-bedroom-night' },
-    { words: ['カフェ', 'コーヒーショップ', 'コーヒー豆'],               bg: () => new Date().getHours() >= 18 ? 'cafe-night' : 'cafe-day' },
-    { words: ['リビング', 'ソファ', 'テレビ', 'テレビ見'],               bg: () => new Date().getHours() >= 18 ? 'minato-living-night' : 'minato-living-day' },
+    {
+        words: ['キッチン', '台所', '料理', '炒め', 'コンロ', '鍋'],
+        // minato-kitchen.jpeg がないため yui-kitchen を共用
+        bg: (owner) => (owner === 'minato' || owner === 'yui') ? 'yui-kitchen' : null
+    },
+    {
+        words: ['お風呂', '風呂', 'シャワー', 'バスルーム'],
+        bg: (owner) => owner === 'minato' ? 'minato-bathroom' : null
+    },
+    {
+        words: ['ベッド', '布団', '寝室', '横になる', '寝よう', '寝転'],
+        bg: (owner) => {
+            const night = new Date().getHours() >= 18 || new Date().getHours() < 6;
+            if (owner === 'minato') return night ? 'minato-bedroom-night' : 'minato-bedroom-morning';
+            if (owner === 'yui')   return night ? 'yui-bedroom-night'    : 'yui-bedroom-morning';
+            return null;
+        }
+    },
+    {
+        words: ['リビング', 'ソファ', 'テレビ'],
+        bg: (owner) => {
+            const night = new Date().getHours() >= 18 || new Date().getHours() < 6;
+            if (owner === 'minato') return night ? 'minato-living-night' : 'minato-living-day';
+            if (owner === 'yui')   return night ? 'yui-living-night'    : 'yui-living-day';
+            return null;
+        }
+    },
 ];
 
 function checkKeywordBackground(text) {
+    const owner = getLocationOwner();
+    if (!owner) return; // 外・職場では切り替えなし
+
     for (const entry of KEYWORD_BG) {
         if (entry.words.some(w => text.includes(w))) {
-            const newBg = entry.bg();
-            if (newBg !== currentSituation.bg) {
+            const newBg = entry.bg(owner);
+            if (newBg && newBg !== currentSituation.bg) {
                 updateBackground({ bg: newBg });
             }
             return;
