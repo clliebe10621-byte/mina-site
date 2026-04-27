@@ -904,3 +904,10 @@ html, body {
     text-align: right;
     letter-spacing: 0.04em;
 }
+
+@media (min-width: 768px) {
+    .cal-app {
+        left: var(--side-nav-w);
+        bottom: 0;
+    }
+}
