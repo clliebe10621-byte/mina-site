@@ -382,7 +382,8 @@ html, body {
     }
 
     /* App shifts right of side nav */
-    .app {
+    .app,
+    .cal-app {
         left: var(--side-nav-w);
         bottom: 0;
     }
