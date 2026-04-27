@@ -1,38 +1,103 @@
-const API_URL = 'https://thvrcvcot4.execute-api.us-east-1.amazonaws.com/prod/chat';
+const API_URL          = 'https://thvrcvcot4.execute-api.us-east-1.amazonaws.com/prod/chat';
+const CALENDAR_API_URL = 'https://thvrcvcot4.execute-api.us-east-1.amazonaws.com/prod/calendar';
 
-// ===== シチュエーション定義 =====
+// ===== デフォルトスケジュール（フォールバック） =====
 const SCHEDULE = {
     weekday: [
-        { start: 0,  end: 5,  bg: 'minato-bedroom-night', mode: 'together', label: '湊の家' },
-        { start: 5,  end: 7,  bg: 'minato-bedroom-morning', mode: 'together', label: '湊の家・朝' },
-        { start: 7,  end: 9,  bg: 'minato-living-day', mode: 'together', label: '湊の家' },
-        { start: 9,  end: 18, bg: 'minato-office-day', mode: 'line', label: '職場' },
-        { start: 18, end: 23, bg: 'minato-living-night', mode: 'together', label: '湊の家' },
-        { start: 23, end: 24, bg: 'minato-bedroom-night', mode: 'together', label: '湊の家' },
+        { start: 0,  end: 5,  bg: 'minato-bedroom-night',   mode: 'together', label: '湊の家' },
+        { start: 5,  end: 7,  bg: 'minato-bedroom-morning',  mode: 'together', label: '湊の家・朝' },
+        { start: 7,  end: 9,  bg: 'minato-living-day',       mode: 'together', label: '湊の家' },
+        { start: 9,  end: 18, bg: 'minato-office-day',       mode: 'line',     label: '職場' },
+        { start: 18, end: 23, bg: 'minato-living-night',     mode: 'together', label: '湊の家' },
+        { start: 23, end: 24, bg: 'minato-bedroom-night',    mode: 'together', label: '湊の家' },
     ],
     weekend: [
-        { start: 0,  end: 7,  bg: 'minato-bedroom-night', mode: 'together', label: '湊の家' },
-        { start: 7,  end: 9,  bg: 'minato-bedroom-morning', mode: 'together', label: '湊の家・朝' },
-        { start: 9,  end: 12, bg: 'minato-living-day', mode: 'together', label: '湊の家' },
-        { start: 12, end: 17, bg: 'cafe-day', mode: 'together', label: 'カフェ' },
-        { start: 17, end: 20, bg: 'minato-living-day', mode: 'together', label: '湊の家' },
-        { start: 20, end: 23, bg: 'minato-living-night', mode: 'together', label: '湊の家' },
-        { start: 23, end: 24, bg: 'minato-bedroom-night', mode: 'together', label: '湊の家' },
+        { start: 0,  end: 7,  bg: 'minato-bedroom-night',   mode: 'together', label: '湊の家' },
+        { start: 7,  end: 9,  bg: 'minato-bedroom-morning',  mode: 'together', label: '湊の家・朝' },
+        { start: 9,  end: 12, bg: 'minato-living-day',       mode: 'together', label: '湊の家' },
+        { start: 12, end: 17, bg: 'cafe-day',                mode: 'together', label: 'カフェ' },
+        { start: 17, end: 20, bg: 'minato-living-day',       mode: 'together', label: '湊の家' },
+        { start: 20, end: 23, bg: 'minato-living-night',     mode: 'together', label: '湊の家' },
+        { start: 23, end: 24, bg: 'minato-bedroom-night',    mode: 'together', label: '湊の家' },
     ]
 };
 
-function getSituation() {
+// ===== 状態 =====
+let dynamicSchedule   = null; // DynamoDB から取得したスケジュール（取得後に上書き）
+let todayEvents       = [];   // 今日のカレンダーイベント
+let currentSituation  = null;
+let isSending         = false;
+
+// ===== シチュエーション解決 =====
+
+function getDefaultSituation() {
     const now = new Date();
-    const h = now.getHours();
-    const d = now.getDay();
-    const isWeekend = d === 0 || d === 6;
-    const schedule = isWeekend ? SCHEDULE.weekend : SCHEDULE.weekday;
-    return schedule.find(s => h >= s.start && h < s.end) || schedule[0];
+    const h   = now.getHours();
+    const isWeekend = [0, 6].includes(now.getDay());
+
+    if (dynamicSchedule) {
+        const rules = isWeekend ? dynamicSchedule.weekend : dynamicSchedule.weekday;
+        const rule  = rules.find(r => h >= r.startHour && h < r.endHour) || rules[0];
+        return { bg: rule.bg, mode: rule.mode, label: rule.label };
+    }
+
+    const rules = isWeekend ? SCHEDULE.weekend : SCHEDULE.weekday;
+    return rules.find(s => h >= s.start && h < s.end) || rules[0];
 }
 
-// ===== 状態 =====
-let currentSituation = getSituation();
-let isSending = false;
+// カレンダーイベントが有効なら mode/label を上書き、bg は時間帯ベースを維持
+function getActiveSituation() {
+    const defSit = getDefaultSituation();
+    if (!todayEvents.length) return defSit;
+
+    const now  = new Date();
+    const mins = now.getHours() * 60 + now.getMinutes();
+    const active = todayEvents.find(ev => {
+        if (!ev.startTime) return true; // 終日イベント
+        const [sh, sm] = ev.startTime.split(':').map(Number);
+        const [eh, em] = (ev.endTime || '23:59').split(':').map(Number);
+        return mins >= sh * 60 + sm && mins < eh * 60 + em;
+    });
+
+    if (!active) return defSit;
+    return { bg: defSit.bg, mode: active.mode, label: active.label };
+}
+
+// ===== カレンダーデータ取得 =====
+
+async function calPost(data) {
+    const res = await fetch(CALENDAR_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    });
+    return res.json();
+}
+
+async function fetchAndApplyCalendar() {
+    try {
+        const now     = new Date();
+        const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+        const [schedRes, evRes] = await Promise.all([
+            calPost({ type: 'get_default_schedule' }).catch(() => null),
+            calPost({ type: 'get_today', date: dateStr }).catch(() => null)
+        ]);
+
+        if (schedRes?.schedule) dynamicSchedule = schedRes.schedule;
+        if (evRes?.events)      todayEvents      = evRes.events;
+
+        // 取得後にシチュエーションを再評価
+        const newSit = getActiveSituation();
+        if (newSit.mode !== currentSituation.mode || newSit.label !== currentSituation.label || newSit.bg !== currentSituation.bg) {
+            currentSituation = newSit;
+            updateBackground(newSit);
+            updateTopBar(newSit);
+        }
+    } catch (e) {
+        console.warn('カレンダー取得失敗（フォールバック使用）:', e.message);
+    }
+}
 
 // ===== チャット履歴の永続化 =====
 const CHAT_STORAGE_KEY = 'mina_chat_html';
@@ -54,7 +119,9 @@ function restoreChatFromStorage() {
 }
 
 // ===== 初期化 =====
+
 function init() {
+    currentSituation = getActiveSituation();
     updateBackground(currentSituation);
     updateTopBar(currentSituation);
     updateClock();
@@ -69,19 +136,21 @@ function init() {
             sendMessage();
         }
     });
+
+    // バックグラウンドでカレンダーデータを取得して反映
+    fetchAndApplyCalendar();
 }
 
 function updateClock() {
     const now = new Date();
-    const h = String(now.getHours()).padStart(2, '0');
-    const m = String(now.getMinutes()).padStart(2, '0');
-    const el = document.getElementById('currentTime');
-    if (el) el.textContent = `${h}:${m}`;
+    const el  = document.getElementById('currentTime');
+    if (el) el.textContent =
+        `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 }
 
 function checkSituationChange() {
-    const newSit = getSituation();
-    if (newSit.bg !== currentSituation.bg) {
+    const newSit = getActiveSituation();
+    if (newSit.bg !== currentSituation.bg || newSit.mode !== currentSituation.mode) {
         currentSituation = newSit;
         updateBackground(newSit);
         updateTopBar(newSit);
@@ -90,6 +159,7 @@ function checkSituationChange() {
 
 function updateBackground(sit) {
     const layer = document.getElementById('bgLayer');
+    if (!layer || !sit.bg) return;
     layer.classList.add('fade-out');
     setTimeout(() => {
         layer.style.backgroundImage = `url('images/${sit.bg}.jpeg')`;
@@ -168,7 +238,7 @@ function updateTopBar(sit) {
 async function sendMessage() {
     if (isSending) return;
     const input = document.getElementById('userInput');
-    const text = input.value.trim();
+    const text  = input.value.trim();
     if (!text) return;
 
     isSending = true;
@@ -177,7 +247,6 @@ async function sendMessage() {
 
     const sit = currentSituation;
     appendUserMessage(text, sit.mode);
-
     const typing = appendTyping(sit.mode);
 
     try {
@@ -209,61 +278,44 @@ async function sendMessage() {
 // ===== メッセージ描画 =====
 function appendUserMessage(text, mode) {
     const area = document.getElementById('chatArea');
-
+    const wrap = document.createElement('div');
     if (mode === 'line') {
-        const wrap = document.createElement('div');
         wrap.className = 'line-msg yui';
         wrap.innerHTML = `<div class="bubble">${escHtml(text)}</div>`;
-        area.appendChild(wrap);
     } else {
-        const wrap = document.createElement('div');
         wrap.className = 'together-msg yui';
         wrap.innerHTML = `<div class="dialogue-bubble">${escHtml(text)}</div>`;
-        area.appendChild(wrap);
     }
+    area.appendChild(wrap);
     scrollBottom();
     saveChatToStorage();
 }
 
 function appendMinatoMessage(text, mode) {
     const area = document.getElementById('chatArea');
-
+    const wrap = document.createElement('div');
     if (mode === 'line') {
-        const wrap = document.createElement('div');
         wrap.className = 'line-msg minato';
         wrap.innerHTML = `<div class="bubble">${formatLine(text)}</div>`;
-        area.appendChild(wrap);
     } else {
-        const wrap = document.createElement('div');
         wrap.className = 'together-msg minato';
         wrap.innerHTML = formatTogether(text);
-        area.appendChild(wrap);
     }
+    area.appendChild(wrap);
     scrollBottom();
     saveChatToStorage();
 }
 
 function appendTyping(mode) {
     const area = document.getElementById('chatArea');
-    const el = document.createElement('div');
-
-    if (mode === 'line') {
-        el.className = 'line-msg minato';
-        el.innerHTML = `
-            <div class="typing-indicator">
-                <div class="typing-dot"></div>
-                <div class="typing-dot"></div>
-                <div class="typing-dot"></div>
-            </div>`;
-    } else {
-        el.className = 'together-msg minato';
-        el.innerHTML = `
-            <div class="typing-indicator">
-                <div class="typing-dot"></div>
-                <div class="typing-dot"></div>
-                <div class="typing-dot"></div>
-            </div>`;
-    }
+    const el   = document.createElement('div');
+    el.className = mode === 'line' ? 'line-msg minato' : 'together-msg minato';
+    el.innerHTML = `
+        <div class="typing-indicator">
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+        </div>`;
     area.appendChild(el);
     scrollBottom();
     return el;
@@ -271,8 +323,8 @@ function appendTyping(mode) {
 
 function appendError() {
     const area = document.getElementById('chatArea');
-    const el = document.createElement('div');
-    el.className = 'error-msg';
+    const el   = document.createElement('div');
+    el.className  = 'error-msg';
     el.textContent = '送信に失敗しました。もう一度試してください。';
     area.appendChild(el);
     scrollBottom();
@@ -291,13 +343,11 @@ function formatTogether(text) {
     lines.forEach(line => {
         const trimmed = line.trim();
 
-        // 行全体が *action* の場合
         if (/^\*([^*]+)\*$/.test(trimmed)) {
             result.push(`<p class="action-text">${escHtml(trimmed.slice(1, -1))}</p>`);
             return;
         }
 
-        // 行内に *action* が混在する場合（例：「セリフ *行動* セリフ」）
         if (trimmed.includes('*')) {
             const parts = trimmed.split(/(\*[^*]+\*)/g);
             const actions = [];
@@ -314,7 +364,6 @@ function formatTogether(text) {
             return;
         }
 
-        // 純粋なセリフ行
         result.push(`<div class="dialogue-bubble">${escHtml(trimmed)}</div>`);
     });
 
@@ -322,11 +371,9 @@ function formatTogether(text) {
 }
 
 function escHtml(str) {
-    return str
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+    return String(str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function scrollBottom() {
