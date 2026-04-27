@@ -8,11 +8,33 @@
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
 </head>
-<body style="background:#F7F5F1;">
-    <div class="placeholder-page">
-        <h2>カレンダー</h2>
-        <p>準備中</p>
+<body class="cal-page">
+
+    <!-- ── メイン ── -->
+    <div class="cal-app">
+
+        <!-- ヘッダー -->
+        <header class="cal-header">
+            <div class="cal-nav">
+                <button class="cal-nav-btn" onclick="prevMonth()">‹</button>
+                <span id="calMonthLabel" class="cal-month-label"></span>
+                <button class="cal-nav-btn" onclick="nextMonth()">›</button>
+            </div>
+            <button class="cal-schedule-btn" onclick="openScheduleModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                デフォルト設定
+            </button>
+        </header>
+
+        <!-- カレンダーグリッド -->
+        <div class="cal-grid" id="calGrid"></div>
+
+        <!-- 日付パネル -->
+        <div class="date-panel" id="datePanel"></div>
+
     </div>
+
+    <!-- タブバー -->
     <nav class="tab-bar">
         <a href="index.html" class="tab-item"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>チャット</span></a>
         <a href="calendar.html" class="tab-item active"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span>カレンダー</span></a>
@@ -20,5 +42,93 @@
         <a href="story.html" class="tab-item"><svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg><span>ストーリー</span></a>
         <a href="character.html" class="tab-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg><span>設定</span></a>
     </nav>
+
+    <!-- ── イベント追加モーダル ── -->
+    <div class="modal-backdrop" id="eventModalBackdrop"></div>
+    <div class="modal" id="eventModal">
+        <div class="modal-header">
+            <span class="modal-title">予定を追加</span>
+            <button class="modal-close" onclick="closeEventModal()">×</button>
+        </div>
+        <form id="eventForm" class="modal-body">
+            <div class="form-group">
+                <label class="form-label">タイトル</label>
+                <input type="text" id="eventTitle" class="form-input" placeholder="例：記念日ディナー" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">日付</label>
+                <input type="date" id="eventDate" class="form-input" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">種類</label>
+                <div class="type-select">
+                    <label class="type-opt"><input type="radio" name="eventTypeR" value="plan" checked><span style="--c:#5C7A8A">予定</span></label>
+                    <label class="type-opt"><input type="radio" name="eventTypeR" value="anniversary"><span style="--c:#C27B7B">記念日</span></label>
+                    <label class="type-opt"><input type="radio" name="eventTypeR" value="memory"><span style="--c:#B5935A">思い出</span></label>
+                </div>
+                <input type="hidden" id="eventType" value="plan">
+            </div>
+            <div class="form-group">
+                <label class="form-label">場所</label>
+                <select id="eventLocation" class="form-input form-select">
+                    <option value="home_minato">湊の家</option>
+                    <option value="home_yui">ゆいの家</option>
+                    <option value="workplace">職場</option>
+                    <option value="cafe">カフェ</option>
+                    <option value="date_out">外出・デート</option>
+                    <option value="travel">旅行先</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">モード</label>
+                <div class="form-static" id="eventModeDisplay">いっしょ</div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">開始時間（任意）</label>
+                    <input type="time" id="eventStartTime" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">終了時間（任意）</label>
+                    <input type="time" id="eventEndTime" class="form-input">
+                </div>
+            </div>
+            <button type="submit" id="eventSubmitBtn" class="form-submit">保存する</button>
+        </form>
+    </div>
+
+    <!-- ── デフォルトスケジュールモーダル ── -->
+    <div class="modal-backdrop" id="scheduleModalBackdrop"></div>
+    <div class="modal" id="scheduleModal">
+        <div class="modal-header">
+            <span class="modal-title">デフォルト設定</span>
+            <button class="modal-close" onclick="closeScheduleModal()">×</button>
+        </div>
+        <div class="modal-body">
+            <p class="schedule-note">予定がない日に適用されるデフォルトの場所・モードを設定できます。</p>
+
+            <div class="schedule-section">
+                <h3 class="schedule-day-label">平日</h3>
+                <div id="scheduleWeekday"></div>
+            </div>
+
+            <div class="schedule-section">
+                <h3 class="schedule-day-label">土日・祝日</h3>
+                <div id="scheduleWeekend"></div>
+            </div>
+
+            <button id="scheduleSaveBtn" class="form-submit" onclick="handleSaveSchedule()">保存する</button>
+        </div>
+    </div>
+
+    <script src="js/calendar.js"></script>
+    <script>
+        // radio → hidden input 同期
+        document.querySelectorAll('input[name="eventTypeR"]').forEach(r => {
+            r.addEventListener('change', () => {
+                document.getElementById('eventType').value = r.value;
+            });
+        });
+    </script>
 </body>
 </html>
