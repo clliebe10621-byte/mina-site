@@ -911,3 +911,148 @@ html, body {
         bottom: 0;
     }
 }
+
+/* ===== MEMORY PAGE ===== */
+.mem-app {
+    position: fixed;
+    inset: 0;
+    bottom: var(--tab-h);
+    display: flex;
+    flex-direction: column;
+    background: #F7F5F1;
+    overflow-y: auto;
+    z-index: 2;
+}
+
+.mem-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 20px 20px 16px;
+    padding-top: calc(20px + env(safe-area-inset-top, 0px));
+    background: #F7F5F1;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+}
+
+.mem-title {
+    font-size: 17px;
+    font-weight: 400;
+    color: var(--text);
+    letter-spacing: 0.04em;
+}
+
+.mem-subtitle {
+    font-size: 11px;
+    color: var(--text-sub);
+    margin-top: 3px;
+    letter-spacing: 0.03em;
+}
+
+.mem-count {
+    font-size: 12px;
+    color: var(--text-sub);
+    letter-spacing: 0.02em;
+    margin-top: 4px;
+}
+
+.mem-list {
+    flex: 1;
+    padding: 8px 0 24px;
+}
+
+.mem-loading {
+    display: flex;
+    justify-content: center;
+    padding: 48px 0;
+}
+
+/* typing indicator reuse */
+.mem-loading .typing-indicator {
+    background: rgba(92, 122, 138, 0.12);
+}
+
+.mem-section {
+    padding: 0;
+}
+
+.mem-month {
+    font-size: 11px;
+    color: var(--text-sub);
+    letter-spacing: 0.06em;
+    padding: 16px 20px 8px;
+}
+
+.mem-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+}
+
+.mem-item:last-child {
+    border-bottom: none;
+}
+
+.mem-heart {
+    width: 14px;
+    height: 14px;
+    color: #C27B7B;
+    flex-shrink: 0;
+    margin-top: 3px;
+    opacity: 0.75;
+}
+
+.mem-body {
+    flex: 1;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.mem-text {
+    font-size: 14px;
+    font-weight: 300;
+    color: var(--text);
+    line-height: 1.6;
+    letter-spacing: 0.02em;
+}
+
+.mem-date {
+    font-size: 11px;
+    color: var(--text-sub);
+    flex-shrink: 0;
+    letter-spacing: 0.02em;
+}
+
+.mem-empty {
+    text-align: center;
+    color: var(--text-sub);
+    font-size: 13px;
+    padding: 64px 20px;
+    letter-spacing: 0.04em;
+}
+
+@media (min-width: 768px) {
+    .mem-app {
+        left: var(--side-nav-w);
+        bottom: 0;
+    }
+
+    .mem-list {
+        max-width: 640px;
+        width: 100%;
+        align-self: center;
+    }
+
+    .mem-header {
+        padding-left: calc(20px + (100% - var(--side-nav-w) - 640px) / 2);
+        padding-right: calc(20px + (100% - var(--side-nav-w) - 640px) / 2);
+    }
+}
