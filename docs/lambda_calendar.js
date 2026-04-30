@@ -107,7 +107,9 @@ exports.handler = async (event) => {
             // ── イベント作成 ────────────────────────────────
             case "create_event": {
                 const { event: ev } = body;
-                if (!ev || !ev.date || !ev.title) throw new Error("date と title は必須です");
+                if (!ev || !ev.date || (!ev.title && !ev.quickType)) {
+                    throw new Error("date と title または quickType は必須です");
+                }
 
                 const eventId = `${ev.date}#${Date.now()}`;
                 const item = {
@@ -115,13 +117,15 @@ exports.handler = async (event) => {
                     SK:        eventId,
                     eventId,
                     date:      ev.date,
-                    title:     ev.title,
+                    title:     ev.title     || ev.quickType,
                     type:      ev.type      || "plan",
+                    quickType: ev.quickType || null,
                     locationId:ev.locationId|| "home_minato",
                     mode:      ev.mode      || LOCATION_MAP[ev.locationId]?.mode || "together",
                     label:     LOCATION_MAP[ev.locationId]?.label || ev.label || "湊の家",
                     startTime: ev.startTime || null,
                     endTime:   ev.endTime   || null,
+                    memo:      ev.memo      || null,
                     createdAt: new Date().toISOString()
                 };
 
