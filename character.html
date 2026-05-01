@@ -8,11 +8,35 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400&family=Noto+Sans+JP:wght@300;400&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
 </head>
-<body style="background:#F7F5F1;">
-    <div class="placeholder-page">
-        <h2>設定</h2>
-        <p>準備中</p>
+<body>
+
+    <div class="settings-app">
+        <header class="settings-header">
+            <h1 class="settings-title">設定</h1>
+        </header>
+
+        <main class="settings-body">
+
+            <!-- AIモデル -->
+            <section class="settings-section">
+                <h2 class="settings-section-title">AIモデル</h2>
+                <p class="settings-note">湊の返答に使うAIエンジンを選択できます。切り替えは即時に反映されます。</p>
+                <div class="llm-toggle">
+                    <button class="llm-btn" id="btnOpenai" onclick="setProvider('openai')">
+                        <span class="llm-btn-name">OpenAI</span>
+                        <span class="llm-btn-model">GPT-4o mini</span>
+                    </button>
+                    <button class="llm-btn" id="btnGemini" onclick="setProvider('gemini')">
+                        <span class="llm-btn-name">Gemini</span>
+                        <span class="llm-btn-model">2.0 Flash</span>
+                    </button>
+                </div>
+                <p class="settings-current" id="providerStatus"></p>
+            </section>
+
+        </main>
     </div>
+
     <nav class="tab-bar">
         <a href="index.html" class="tab-item"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>チャット</span></a>
         <a href="calendar.html" class="tab-item"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span>カレンダー</span></a>
@@ -20,5 +44,25 @@
         <a href="story.html" class="tab-item"><svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg><span>ストーリー</span></a>
         <a href="character.html" class="tab-item active"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg><span>設定</span></a>
     </nav>
+
+    <script>
+        function setProvider(p) {
+            localStorage.setItem('llmProvider', p);
+            updateUI(p);
+        }
+
+        function updateUI(p) {
+            document.getElementById('btnOpenai').classList.toggle('active', p === 'openai');
+            document.getElementById('btnGemini').classList.toggle('active', p === 'gemini');
+            const labels = {
+                openai: '現在: OpenAI（GPT-4o mini）',
+                gemini: '現在: Gemini（2.0 Flash）'
+            };
+            document.getElementById('providerStatus').textContent = labels[p] || labels.openai;
+        }
+
+        const current = localStorage.getItem('llmProvider') || 'openai';
+        updateUI(current);
+    </script>
 </body>
 </html>

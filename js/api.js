@@ -254,10 +254,11 @@ async function sendMessage() {
             ? `[状況: 別々の場所でLINEでやり取り中。${sit.label}にいる] `
             : `[状況: いっしょにいる。${sit.label}。] `;
 
+        const provider = localStorage.getItem('llmProvider') || 'openai';
         const res = await fetch(API_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: contextPrefix + text, mode: sit.mode, location: sit.label })
+            body: JSON.stringify({ message: contextPrefix + text, mode: sit.mode, location: sit.label, provider })
         });
 
         const data = await res.json();

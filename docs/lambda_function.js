@@ -274,7 +274,8 @@ ${memText}`;
 // ═══════════════════════════════════════════════
 
 exports.handler = async (event) => {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const openaiKey = process.env.OPENAI_API_KEY;
+    const geminiKey = process.env.GEMINI_API_KEY;
 
     const HEADERS = {
         "Access-Control-Allow-Origin": "*",
@@ -303,7 +304,7 @@ exports.handler = async (event) => {
         }
 
         // ── チャット ─────────────────────────────────
-        const { message: userMessage, mode = "together", location = "湊の家" } = body;
+        const { message: userMessage, mode = "together", location = "湊の家", provider = "openai" } = body;
         if (!userMessage) throw new Error("メッセージが空です");
 
         // キャラ設定・記憶・会話履歴を並行取得
@@ -336,43 +337,82 @@ exports.handler = async (event) => {
             ])
             .filter(m => m.content !== "");
 
-        // フロントが付けたコンテキストプレフィックスを除去して保存用テキストを準備
         const userText = userMessage.replace(/^\[状況:.+?\]\s*/, "");
 
-        // 返信生成と記憶抽出を並行実行
-        const [replyRes, memoryRes] = await Promise.all([
-            fetch("https://api.openai.com/v1/chat/completions", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-                body: JSON.stringify({
-                    model: "gpt-4o-mini",
-                    messages: [
-                        { role: "system", content: systemPrompt },
-                        ...historyMessages,
-                        { role: "user", content: userMessage }
-                    ],
-                    temperature: 0.85
-                })
-            }),
-            fetch("https://api.openai.com/v1/chat/completions", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-                body: JSON.stringify({
-                    model: "gpt-4o-mini",
-                    messages: [
-                        { role: "system", content: "会話からゆいに関して湊が覚えるべき事実を1つ20字以内で。無ければ「なし」。" },
-                        { role: "user", content: `ゆい: ${userText}` }
-                    ],
-                    max_tokens: 30
-                })
-            })
-        ]);
+        let minaReply, newMem;
 
-        const replyJson  = await replyRes.json();
-        const memoryJson = await memoryRes.json();
+        if (provider === "gemini") {
+            // ── Gemini API ────────────────────────────
+            const geminiContents = [
+                ...historyMessages.map(m => ({
+                    role: m.role === "assistant" ? "model" : "user",
+                    parts: [{ text: m.content }]
+                })),
+                { role: "user", parts: [{ text: userMessage }] }
+            ];
 
-        const minaReply = replyJson.choices?.[0]?.message?.content || "……ごめん、ちょっとぼーっとしてた。";
-        const newMem    = memoryJson.choices?.[0]?.message?.content?.trim() || "なし";
+            const [replyRes, memRes] = await Promise.all([
+                fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        system_instruction: { parts: [{ text: systemPrompt }] },
+                        contents: geminiContents,
+                        generationConfig: { temperature: 0.85 }
+                    })
+                }),
+                fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        contents: [{ role: "user", parts: [{ text: `会話からゆいに関して湊が覚えるべき事実を1つ20字以内で。無ければ「なし」。\nゆい: ${userText}` }] }],
+                        generationConfig: { maxOutputTokens: 30 }
+                    })
+                })
+            ]);
+
+            const replyJson = await replyRes.json();
+            const memJson   = await memRes.json();
+
+            minaReply = replyJson.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "……ごめん、ちょっとぼーっとしてた。";
+            newMem    = memJson.candidates?.[0]?.content?.parts?.[0]?.text?.trim()   || "なし";
+
+        } else {
+            // ── OpenAI API ────────────────────────────
+            const [replyRes, memRes] = await Promise.all([
+                fetch("https://api.openai.com/v1/chat/completions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${openaiKey}` },
+                    body: JSON.stringify({
+                        model: "gpt-4o-mini",
+                        messages: [
+                            { role: "system", content: systemPrompt },
+                            ...historyMessages,
+                            { role: "user", content: userMessage }
+                        ],
+                        temperature: 0.85
+                    })
+                }),
+                fetch("https://api.openai.com/v1/chat/completions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${openaiKey}` },
+                    body: JSON.stringify({
+                        model: "gpt-4o-mini",
+                        messages: [
+                            { role: "system", content: "会話からゆいに関して湊が覚えるべき事実を1つ20字以内で。無ければ「なし」。" },
+                            { role: "user", content: `ゆい: ${userText}` }
+                        ],
+                        max_tokens: 30
+                    })
+                })
+            ]);
+
+            const replyJson = await replyRes.json();
+            const memJson   = await memRes.json();
+
+            minaReply = replyJson.choices?.[0]?.message?.content || "……ごめん、ちょっとぼーっとしてた。";
+            newMem    = memJson.choices?.[0]?.message?.content?.trim() || "なし";
+        }
 
         // ── 保存（失敗してもユーザーへの返信は止めない）────
         const now = Date.now().toString();
@@ -399,7 +439,7 @@ exports.handler = async (event) => {
         return {
             statusCode: 200,
             headers: HEADERS,
-            body: JSON.stringify({ reply: minaReply })
+            body: JSON.stringify({ reply: minaReply, provider })
         };
 
     } catch (error) {
